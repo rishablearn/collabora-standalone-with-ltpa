@@ -10,6 +10,7 @@ A complete standalone deployment of **Collabora Online** with enterprise authent
 - **IBM WebSphere SSO** - LTPA2 token integration for single sign-on
 - **File Storage** - Local file storage with quota management
 - **Modern Web UI** - React-based document manager
+- **Whitelabel Support** - Customizable branding, colors, and logos
 - **WOPI Protocol** - Complete WOPI server implementation
 - **Docker Deployment** - Containerized for easy deployment
 - **SSL/TLS Ready** - Nginx reverse proxy with HTTPS
@@ -168,6 +169,42 @@ You can upload your `ltpa.keys` file with password:
 - **Manual config**: `POST /api/admin/ltpa/configure` with extracted keys
 
 📚 **See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for detailed configuration guides.**
+
+## 🎨 Whitelabeling / Custom Branding
+
+Customize the application to match your organization's branding:
+
+### Quick Customization
+
+1. **Edit the configuration:**
+   ```bash
+   nano web-frontend/src/config/whitelabel.config.js
+   ```
+
+2. **Add your logo:**
+   ```bash
+   cp your-logo.svg web-frontend/public/branding/logo.svg
+   ```
+
+3. **Rebuild and deploy:**
+   ```bash
+   docker compose build web-frontend
+   docker compose up -d web-frontend
+   ```
+
+### What Can Be Customized
+
+| Element | Description |
+|---------|-------------|
+| **Logo** | Header logo, login page logo, favicon |
+| **Colors** | Primary brand color, secondary colors, status colors |
+| **App Name** | Application name throughout the UI |
+| **Typography** | Font family and sizes |
+| **UI Elements** | Border radius, animations, dark mode |
+| **Text Labels** | Button text, navigation labels, page titles |
+| **Features** | Toggle registration, social login, etc. |
+
+📚 **See [docs/WHITELABELING.md](docs/WHITELABELING.md) for the complete whitelabeling guide.**
 
 ## 🔒 SSL Certificates
 

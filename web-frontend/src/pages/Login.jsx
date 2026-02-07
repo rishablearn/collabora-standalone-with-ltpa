@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Eye, EyeOff } from 'lucide-react';
+import { useWhitelabel } from '../context/WhitelabelContext';
+import Logo from '../components/Logo';
+import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Login() {
@@ -10,6 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { branding, text, features, logos } = useWhitelabel();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -27,17 +30,25 @@ export default function Login() {
     }
   };
 
+  // Background style for login page
+  const backgroundStyle = logos.loginBackground 
+    ? { backgroundImage: `url(${logos.loginBackground})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : {};
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div 
+      className="min-h-screen login-gradient flex flex-col justify-center py-12 sm:px-6 lg:px-8"
+      style={backgroundStyle}
+    >
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <FileText className="h-16 w-16 text-primary-600" />
+          <Logo variant="login" size="xl" showText={false} />
         </div>
         <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-          Collabora Docs
+          {text.loginTitle || branding.appName}
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to your account
+          {text.loginSubtitle || 'Sign in to your account'}
         </p>
       </div>
 
@@ -99,32 +110,34 @@ export default function Login() {
                 disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Signing in...' : 'Sign in'}
+                {loading ? 'Signing in...' : (text.loginButton || 'Sign in')}
               </button>
             </div>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  New to Collabora Docs?
-                </span>
-              </div>
-            </div>
-
+          {features.enableRegistration && (
             <div className="mt-6">
-              <Link
-                to="/register"
-                className="w-full flex justify-center py-2 px-4 border border-primary-600 rounded-md shadow-sm text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-                Create an account
-              </Link>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">
+                    New to {branding.appName}?
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <Link
+                  to="/register"
+                  className="w-full flex justify-center py-2 px-4 border border-primary-600 rounded-md shadow-sm text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                  Create an account
+                </Link>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

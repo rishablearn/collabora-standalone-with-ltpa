@@ -1,7 +1,8 @@
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useWhitelabel } from '../context/WhitelabelContext';
+import Logo from './Logo';
 import { 
-  FileText, 
   LogOut, 
   Settings, 
   User,
@@ -12,6 +13,7 @@ import { useState } from 'react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { text, branding, ui } = useWhitelabel();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -27,9 +29,8 @@ export default function Layout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center space-x-2">
-              <FileText className="h-8 w-8 text-primary-600" />
-              <span className="text-xl font-bold text-gray-900">Collabora Docs</span>
+            <Link to="/" className="flex items-center">
+              <Logo variant="primary" size="md" />
             </Link>
 
             {/* Desktop Navigation */}
@@ -38,7 +39,7 @@ export default function Layout() {
                 to="/"
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
               >
-                My Documents
+                {text.documentsLabel || 'My Documents'}
               </Link>
               <Link
                 to="/settings"
@@ -84,20 +85,20 @@ export default function Layout() {
                 className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                My Documents
+                {text.documentsLabel || 'My Documents'}
               </Link>
               <Link
                 to="/settings"
                 className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                Settings
+                {text.settingsLabel || 'Settings'}
               </Link>
               <button
                 onClick={handleLogout}
                 className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-50"
               >
-                Logout
+                {text.logoutLabel || 'Logout'}
               </button>
             </div>
           </div>
