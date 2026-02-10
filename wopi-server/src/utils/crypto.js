@@ -8,6 +8,17 @@ const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
 /**
+ * Get WOPI secret with validation
+ */
+function getWopiSecret() {
+  const secret = process.env.WOPI_SECRET;
+  if (!secret || secret.startsWith('CHANGE_ME') || secret.length < 32) {
+    throw new Error('WOPI_SECRET is not configured or is insecure. Please generate a secure secret with: openssl rand -hex 32');
+  }
+  return secret;
+}
+
+/**
  * Generate a secure access token for WOPI
  */
 function generateAccessToken(fileId, userId, permissions = 'view') {
@@ -19,7 +30,7 @@ function generateAccessToken(fileId, userId, permissions = 'view') {
     nonce: crypto.randomBytes(16).toString('hex')
   };
   
-  const secret = process.env.WOPI_SECRET || 'default-secret';
+  const secret = getWopiSecret();
   const encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), secret).toString();
   return Buffer.from(encrypted).toString('base64url');
 }
@@ -29,7 +40,7 @@ function generateAccessToken(fileId, userId, permissions = 'view') {
  */
 function verifyAccessToken(token) {
   try {
-    const secret = process.env.WOPI_SECRET || 'default-secret';
+    const secret = getWopiSecret();
     const encrypted = Buffer.from(token, 'base64url').toString();
     const decrypted = CryptoJS.AES.decrypt(encrypted, secret);
     const payload = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));

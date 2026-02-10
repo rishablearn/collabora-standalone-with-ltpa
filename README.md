@@ -206,7 +206,32 @@ Customize the application to match your organization's branding:
 
 📚 **See [docs/WHITELABELING.md](docs/WHITELABELING.md) for the complete whitelabeling guide.**
 
-## 🔒 SSL Certificates
+## � Security
+
+### Generating Secrets
+
+Before deployment, generate secure secrets:
+
+```bash
+# Automated (recommended)
+./scripts/generate-secrets.sh
+
+# Or manually
+openssl rand -hex 32  # For JWT_SECRET, WOPI_SECRET
+openssl rand -base64 24  # For passwords
+```
+
+### Security Features
+
+- **Secret Validation** - Server validates all secrets on startup
+- **Password Hashing** - bcrypt with cost factor 12
+- **Password Strength** - Visual indicator during registration
+- **Rate Limiting** - Configurable request limits
+- **Audit Logging** - Track user actions
+
+📚 **See [docs/SECURITY.md](docs/SECURITY.md) for the complete security guide.**
+
+## �🔒 SSL Certificates
 
 ### Using Existing Certificates
 

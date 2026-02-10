@@ -9,6 +9,10 @@ const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
+const { validateSecretsOnStartup } = require('./utils/validateSecrets');
+
+// Validate secrets on startup
+validateSecretsOnStartup();
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -83,7 +87,7 @@ if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV !== 'production') 
 // Session middleware
 app.use(session({
   store: redisStore,
-  secret: process.env.JWT_SECRET || 'change-this-secret',
+  secret: process.env.JWT_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
