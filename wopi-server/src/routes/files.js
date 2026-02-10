@@ -70,6 +70,7 @@ const SUPPORTED_TYPES = {
   'application/msword': 'doc',
   'application/rtf': 'rtf',
   'text/plain': 'txt',
+  'text/html': 'html',
   // Spreadsheets
   'application/vnd.oasis.opendocument.spreadsheet': 'ods',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
@@ -79,8 +80,64 @@ const SUPPORTED_TYPES = {
   'application/vnd.oasis.opendocument.presentation': 'odp',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
   'application/vnd.ms-powerpoint': 'ppt',
+  // Drawings
+  'application/vnd.oasis.opendocument.graphics': 'odg',
   // PDF
   'application/pdf': 'pdf'
+};
+
+// Extension to MIME type mapping (reverse lookup)
+const EXT_TO_MIME = Object.entries(SUPPORTED_TYPES).reduce((acc, [mime, ext]) => {
+  acc[ext] = mime;
+  return acc;
+}, {});
+
+// Export format configurations
+const EXPORT_FORMATS = {
+  document: [
+    { ext: 'odt', mime: 'application/vnd.oasis.opendocument.text', label: 'ODF Document (.odt)' },
+    { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', label: 'Word Document (.docx)' },
+    { ext: 'doc', mime: 'application/msword', label: 'Word 97-2003 (.doc)' },
+    { ext: 'rtf', mime: 'application/rtf', label: 'Rich Text (.rtf)' },
+    { ext: 'txt', mime: 'text/plain', label: 'Plain Text (.txt)' },
+    { ext: 'pdf', mime: 'application/pdf', label: 'PDF (.pdf)' },
+    { ext: 'html', mime: 'text/html', label: 'HTML (.html)' },
+  ],
+  spreadsheet: [
+    { ext: 'ods', mime: 'application/vnd.oasis.opendocument.spreadsheet', label: 'ODF Spreadsheet (.ods)' },
+    { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', label: 'Excel Document (.xlsx)' },
+    { ext: 'xls', mime: 'application/vnd.ms-excel', label: 'Excel 97-2003 (.xls)' },
+    { ext: 'csv', mime: 'text/csv', label: 'CSV (.csv)' },
+    { ext: 'pdf', mime: 'application/pdf', label: 'PDF (.pdf)' },
+  ],
+  presentation: [
+    { ext: 'odp', mime: 'application/vnd.oasis.opendocument.presentation', label: 'ODF Presentation (.odp)' },
+    { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', label: 'PowerPoint (.pptx)' },
+    { ext: 'ppt', mime: 'application/vnd.ms-powerpoint', label: 'PowerPoint 97-2003 (.ppt)' },
+    { ext: 'pdf', mime: 'application/pdf', label: 'PDF (.pdf)' },
+  ],
+  drawing: [
+    { ext: 'odg', mime: 'application/vnd.oasis.opendocument.graphics', label: 'ODF Drawing (.odg)' },
+    { ext: 'pdf', mime: 'application/pdf', label: 'PDF (.pdf)' },
+  ]
+};
+
+// Map MIME types to document categories
+const MIME_TO_CATEGORY = {
+  'application/vnd.oasis.opendocument.text': 'document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+  'application/msword': 'document',
+  'application/rtf': 'document',
+  'text/plain': 'document',
+  'text/html': 'document',
+  'application/vnd.oasis.opendocument.spreadsheet': 'spreadsheet',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'spreadsheet',
+  'application/vnd.ms-excel': 'spreadsheet',
+  'text/csv': 'spreadsheet',
+  'application/vnd.oasis.opendocument.presentation': 'presentation',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'presentation',
+  'application/vnd.ms-powerpoint': 'presentation',
+  'application/vnd.oasis.opendocument.graphics': 'drawing',
 };
 
 // Configure multer for file uploads
@@ -602,12 +659,40 @@ router.post('/folder', async (req, res) => {
 });
 
 /**
+ * GET /api/files/formats
+ * Get supported file formats for creation and export
+ */
+router.get('/formats', (req, res) => {
+  res.json({
+    create: {
+      document: [
+        { ext: 'odt', mime: 'application/vnd.oasis.opendocument.text', label: 'ODF Document (.odt)', default: true },
+        { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', label: 'Word Document (.docx)' },
+      ],
+      spreadsheet: [
+        { ext: 'ods', mime: 'application/vnd.oasis.opendocument.spreadsheet', label: 'ODF Spreadsheet (.ods)', default: true },
+        { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', label: 'Excel Document (.xlsx)' },
+      ],
+      presentation: [
+        { ext: 'odp', mime: 'application/vnd.oasis.opendocument.presentation', label: 'ODF Presentation (.odp)', default: true },
+        { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', label: 'PowerPoint (.pptx)' },
+      ],
+      drawing: [
+        { ext: 'odg', mime: 'application/vnd.oasis.opendocument.graphics', label: 'ODF Drawing (.odg)', default: true },
+      ]
+    },
+    export: EXPORT_FORMATS,
+    supported: SUPPORTED_TYPES
+  });
+});
+
+/**
  * POST /api/files/create
  * Create a new empty document
  */
 router.post('/create', async (req, res) => {
   try {
-    const { name, type, folderId } = req.body;
+    const { name, type, folderId, format } = req.body;
 
     if (!name || !type) {
       return res.status(400).json({ error: 'Name and type required' });
@@ -615,12 +700,21 @@ router.post('/create', async (req, res) => {
 
     // Determine file extension and template
     const templates = {
+      // ODF formats (native)
       document: { ext: 'odt', mime: 'application/vnd.oasis.opendocument.text' },
       spreadsheet: { ext: 'ods', mime: 'application/vnd.oasis.opendocument.spreadsheet' },
-      presentation: { ext: 'odp', mime: 'application/vnd.oasis.opendocument.presentation' }
+      presentation: { ext: 'odp', mime: 'application/vnd.oasis.opendocument.presentation' },
+      drawing: { ext: 'odg', mime: 'application/vnd.oasis.opendocument.graphics' },
+      // MS Office formats
+      'document-docx': { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+      'spreadsheet-xlsx': { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      'presentation-pptx': { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
     };
 
-    const template = templates[type];
+    // Support format parameter for specific format selection
+    const templateKey = format ? `${type}-${format}` : type;
+    let template = templates[templateKey] || templates[type];
+    
     if (!template) {
       return res.status(400).json({ error: 'Invalid document type' });
     }
@@ -676,6 +770,268 @@ router.post('/create', async (req, res) => {
   } catch (error) {
     logger.error('Create document error:', error);
     res.status(500).json({ error: 'Failed to create document' });
+  }
+});
+
+/**
+ * GET /api/files/:id/export-formats
+ * Get available export formats for a specific file
+ */
+router.get('/:id/export-formats', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT mime_type FROM files WHERE id = $1 AND is_deleted = false',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const mimeType = result.rows[0].mime_type;
+    const category = MIME_TO_CATEGORY[mimeType];
+
+    if (!category) {
+      return res.json({ formats: [] });
+    }
+
+    res.json({
+      category,
+      formats: EXPORT_FORMATS[category] || []
+    });
+  } catch (error) {
+    logger.error('Get export formats error:', error);
+    res.status(500).json({ error: 'Failed to get export formats' });
+  }
+});
+
+/**
+ * POST /api/files/:id/export
+ * Export/convert a file to a different format
+ * This creates a converted copy via Collabora's conversion service
+ */
+router.post('/:id/export', async (req, res) => {
+  try {
+    const { format } = req.body; // Target format extension (e.g., 'pdf', 'docx')
+
+    if (!format) {
+      return res.status(400).json({ error: 'Target format required' });
+    }
+
+    // Get file info
+    const result = await pool.query(
+      'SELECT * FROM files WHERE id = $1 AND is_deleted = false',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const file = result.rows[0];
+
+    // Check access
+    if (file.owner_id !== req.user.id) {
+      const shareResult = await pool.query(
+        'SELECT * FROM file_shares WHERE file_id = $1 AND shared_with = $2',
+        [file.id, req.user.id]
+      );
+      if (shareResult.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    // Get the target MIME type
+    const targetMime = EXT_TO_MIME[format];
+    if (!targetMime) {
+      return res.status(400).json({ error: 'Unsupported target format' });
+    }
+
+    // Read the source file
+    const filePath = path.join(STORAGE_PATH, file.storage_path);
+    const fileContent = await fs.readFile(filePath);
+
+    // Call Collabora's conversion service
+    const collaboraUrl = process.env.COLLABORA_URL || 'http://collabora:9980';
+    const convertUrl = `${collaboraUrl}/cool/convert-to/${format}`;
+
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('file', fileContent, {
+      filename: file.original_filename,
+      contentType: file.mime_type
+    });
+
+    const response = await fetch(convertUrl, {
+      method: 'POST',
+      body: formData,
+      headers: formData.getHeaders()
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Collabora conversion failed:', { status: response.status, error: errorText });
+      return res.status(500).json({ error: 'Conversion failed' });
+    }
+
+    const convertedBuffer = Buffer.from(await response.arrayBuffer());
+
+    // Generate filename with new extension
+    const baseName = file.original_filename.replace(/\.[^/.]+$/, '');
+    const newFilename = `${baseName}.${format}`;
+
+    // Set headers for download
+    res.set({
+      'Content-Type': targetMime,
+      'Content-Disposition': `attachment; filename="${newFilename}"`,
+      'Content-Length': convertedBuffer.length
+    });
+
+    res.send(convertedBuffer);
+
+    // Log audit
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, resource_type, resource_id, details, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.id, 'FILE_EXPORT', 'file', file.id, JSON.stringify({ format }), req.ip]
+    );
+  } catch (error) {
+    logger.error('Export error:', error);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+/**
+ * POST /api/files/:id/save-as
+ * Save a copy of the file with a new name/format
+ */
+router.post('/:id/save-as', async (req, res) => {
+  try {
+    const { name, format, folderId } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'New name required' });
+    }
+
+    // Get source file
+    const result = await pool.query(
+      'SELECT * FROM files WHERE id = $1 AND is_deleted = false',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const sourceFile = result.rows[0];
+
+    // Check access
+    if (sourceFile.owner_id !== req.user.id) {
+      const shareResult = await pool.query(
+        'SELECT * FROM file_shares WHERE file_id = $1 AND shared_with = $2',
+        [sourceFile.id, req.user.id]
+      );
+      if (shareResult.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    // Determine target format
+    const sourceExt = sourceFile.original_filename.split('.').pop().toLowerCase();
+    const targetExt = format || sourceExt;
+    const targetMime = EXT_TO_MIME[targetExt] || sourceFile.mime_type;
+
+    // Read source file
+    const sourcePath = path.join(STORAGE_PATH, sourceFile.storage_path);
+    let fileContent = await fs.readFile(sourcePath);
+
+    // Convert if different format requested
+    if (format && format !== sourceExt) {
+      const collaboraUrl = process.env.COLLABORA_URL || 'http://collabora:9980';
+      const convertUrl = `${collaboraUrl}/cool/convert-to/${format}`;
+
+      const FormData = require('form-data');
+      const formData = new FormData();
+      formData.append('file', fileContent, {
+        filename: sourceFile.original_filename,
+        contentType: sourceFile.mime_type
+      });
+
+      const response = await fetch(convertUrl, {
+        method: 'POST',
+        body: formData,
+        headers: formData.getHeaders()
+      });
+
+      if (!response.ok) {
+        return res.status(500).json({ error: 'Conversion failed' });
+      }
+
+      fileContent = Buffer.from(await response.arrayBuffer());
+    }
+
+    // Create new file
+    const newFileId = uuidv4();
+    const newFilename = name.endsWith(`.${targetExt}`) ? name : `${name}.${targetExt}`;
+    const storageFilename = `${newFileId}.${targetExt}`;
+    const userDir = path.join(STORAGE_PATH, req.user.id);
+    const newFilePath = path.join(userDir, storageFilename);
+    const storagePath = path.join(req.user.id, storageFilename);
+
+    await fs.mkdir(userDir, { recursive: true });
+    await fs.writeFile(newFilePath, fileContent);
+
+    const stats = await fs.stat(newFilePath);
+
+    // Check storage quota
+    const userResult = await pool.query(
+      'SELECT storage_quota, storage_used FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = userResult.rows[0];
+
+    if (user.storage_used + stats.size > user.storage_quota) {
+      await fs.unlink(newFilePath);
+      return res.status(413).json({ error: 'Storage quota exceeded' });
+    }
+
+    // Create file record
+    const fileResult = await pool.query(
+      `INSERT INTO files (id, owner_id, filename, original_filename, mime_type, size, storage_path, parent_folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [newFileId, req.user.id, storageFilename, newFilename, targetMime, stats.size, storagePath, folderId || null]
+    );
+
+    // Update user storage
+    await pool.query(
+      'UPDATE users SET storage_used = storage_used + $1 WHERE id = $2',
+      [stats.size, req.user.id]
+    );
+
+    // Log audit
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, resource_type, resource_id, details, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.id, 'FILE_SAVE_AS', 'file', newFileId, JSON.stringify({ 
+        sourceId: sourceFile.id, 
+        newName: newFilename,
+        format: targetExt 
+      }), req.ip]
+    );
+
+    const newFile = fileResult.rows[0];
+
+    res.status(201).json({
+      id: newFile.id,
+      name: newFile.original_filename,
+      mimeType: newFile.mime_type,
+      size: parseInt(newFile.size),
+      createdAt: newFile.created_at
+    });
+  } catch (error) {
+    logger.error('Save-as error:', error);
+    res.status(500).json({ error: 'Save-as failed' });
   }
 });
 

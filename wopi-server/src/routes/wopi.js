@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { verifyAccessToken, generateLockId } = require('../utils/crypto');
 const logger = require('../utils/logger');
@@ -78,13 +79,15 @@ router.get('/files/:fileId', async (req, res) => {
       ReadOnly: !canEdit,
       UserCanRename: isOwner,
       
-      // UI settings
+      // UI settings - Enable all export/print options
       DisablePrint: false,
       DisableExport: false,
       DisableCopy: false,
       HidePrintOption: false,
       HideSaveOption: false,
       HideExportOption: false,
+      EnableInsertRemoteImage: true,
+      EnableShare: true,
       
       // User info
       UserFriendlyName: file.owner_name,
@@ -102,7 +105,12 @@ router.get('/files/:fileId', async (req, res) => {
       SupportsExtendedLockLength: true,
       SupportsUpdate: true,
       SupportsRename: isOwner,
+      SupportsDeleteFile: isOwner,
       SupportedShareUrlTypes: ['ReadOnly', 'ReadWrite'],
+      
+      // Export/SaveAs capabilities
+      UserCanNotWriteRelative: false,
+      SupportsUserInfo: true,
       
       // Additional properties
       IsAnonymousUser: false,
@@ -301,7 +309,7 @@ router.post('/files/:fileId', async (req, res) => {
         return await handleUnlock(fileId, wopiLock, res);
       
       case 'PUT_RELATIVE':
-        return res.status(501).json({ error: 'Not implemented' });
+        return await handlePutRelative(fileId, req, tokenData, res);
       
       case 'RENAME_FILE':
         return await handleRename(fileId, req.headers['x-wopi-requestedname'], tokenData, res);
@@ -449,6 +457,158 @@ async function handleDelete(fileId, tokenData, res) {
   );
 
   res.status(200).json({ message: 'Deleted' });
+}
+
+/**
+ * Handle PUT_RELATIVE - Save As functionality
+ * Creates a new file with the content from Collabora
+ */
+async function handlePutRelative(fileId, req, tokenData, res) {
+  try {
+    const suggestedTarget = req.headers['x-wopi-suggestedtarget'];
+    const relativeTarget = req.headers['x-wopi-relativetarget'];
+    const overwriteRelative = req.headers['x-wopi-overwriterelativetarget'] === 'true';
+    const fileSize = parseInt(req.headers['x-wopi-size']) || 0;
+
+    // Get source file info
+    const sourceResult = await pool.query(
+      'SELECT * FROM files WHERE id = $1 AND is_deleted = false',
+      [fileId]
+    );
+
+    if (sourceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+
+    const sourceFile = sourceResult.rows[0];
+
+    // Determine target filename
+    let targetName;
+    if (relativeTarget) {
+      // Use exact name specified
+      targetName = relativeTarget;
+    } else if (suggestedTarget) {
+      if (suggestedTarget.startsWith('.')) {
+        // Just extension change - keep original name, change extension
+        const baseName = sourceFile.original_filename.replace(/\.[^/.]+$/, '');
+        targetName = baseName + suggestedTarget;
+      } else {
+        targetName = suggestedTarget;
+      }
+    } else {
+      return res.status(400).json({ error: 'No target filename specified' });
+    }
+
+    // Clean the filename
+    targetName = targetName.replace(/[<>:"/\\|?*]/g, '_');
+
+    // Check if file with same name exists in same folder
+    const existingResult = await pool.query(
+      `SELECT id FROM files 
+       WHERE owner_id = $1 
+       AND original_filename = $2 
+       AND parent_folder_id IS NOT DISTINCT FROM $3
+       AND is_deleted = false`,
+      [sourceFile.owner_id, targetName, sourceFile.parent_folder_id]
+    );
+
+    if (existingResult.rows.length > 0 && !overwriteRelative) {
+      // File exists and overwrite not allowed
+      res.set('X-WOPI-ValidRelativeTarget', targetName);
+      return res.status(409).json({ error: 'File already exists' });
+    }
+
+    // Get file content from request body
+    const fileContent = req.body;
+
+    // Create new file
+    const newFileId = uuidv4();
+    const ext = path.extname(targetName).slice(1) || 'odt';
+    const storageFilename = `${newFileId}.${ext}`;
+    const userDir = path.join(STORAGE_PATH, sourceFile.owner_id);
+    const newFilePath = path.join(userDir, storageFilename);
+    const storagePath = path.join(sourceFile.owner_id, storageFilename);
+
+    // Determine MIME type from extension
+    const mimeTypes = {
+      'odt': 'application/vnd.oasis.opendocument.text',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'doc': 'application/msword',
+      'rtf': 'application/rtf',
+      'txt': 'text/plain',
+      'pdf': 'application/pdf',
+      'ods': 'application/vnd.oasis.opendocument.spreadsheet',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xls': 'application/vnd.ms-excel',
+      'csv': 'text/csv',
+      'odp': 'application/vnd.oasis.opendocument.presentation',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'odg': 'application/vnd.oasis.opendocument.graphics',
+    };
+    const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+    // Ensure directory exists
+    await fs.mkdir(userDir, { recursive: true });
+
+    // Write file
+    await fs.writeFile(newFilePath, fileContent);
+    const stats = await fs.stat(newFilePath);
+
+    // If overwriting, delete old file first
+    if (existingResult.rows.length > 0 && overwriteRelative) {
+      await pool.query(
+        'UPDATE files SET is_deleted = true WHERE id = $1',
+        [existingResult.rows[0].id]
+      );
+    }
+
+    // Create file record
+    const fileResult = await pool.query(
+      `INSERT INTO files (id, owner_id, filename, original_filename, mime_type, size, storage_path, parent_folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [newFileId, sourceFile.owner_id, storageFilename, targetName, mimeType, stats.size, storagePath, sourceFile.parent_folder_id]
+    );
+
+    // Update user storage
+    await pool.query(
+      'UPDATE users SET storage_used = storage_used + $1 WHERE id = $2',
+      [stats.size, sourceFile.owner_id]
+    );
+
+    // Log audit
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, resource_type, resource_id, details)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [tokenData.userId, 'FILE_SAVE_AS', 'file', newFileId, JSON.stringify({ 
+        sourceId: fileId, 
+        targetName 
+      })]
+    );
+
+    const newFile = fileResult.rows[0];
+    const domain = process.env.DOMAIN || 'localhost';
+
+    // Build response with URL to the new file
+    const wopiSrc = `https://${domain}/wopi/files/${newFile.id}`;
+
+    res.json({
+      Name: newFile.original_filename,
+      Url: wopiSrc,
+      HostViewUrl: `https://${domain}/edit/${newFile.id}`,
+      HostEditUrl: `https://${domain}/edit/${newFile.id}`
+    });
+
+    logger.info('PUT_RELATIVE completed', { 
+      sourceId: fileId, 
+      newId: newFile.id, 
+      targetName 
+    });
+  } catch (error) {
+    logger.error('PUT_RELATIVE error:', error);
+    res.status(500).json({ error: 'Failed to save file' });
+  }
 }
 
 module.exports = router;

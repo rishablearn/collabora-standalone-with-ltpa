@@ -231,7 +231,27 @@ openssl rand -base64 24  # For passwords
 
 📚 **See [docs/SECURITY.md](docs/SECURITY.md) for the complete security guide.**
 
-## �🔒 SSL Certificates
+## 📄 File Format Support
+
+### Supported Formats
+
+| Type | Create | Edit | Export |
+|------|--------|------|--------|
+| **Documents** | `.odt`, `.docx` | `.odt`, `.docx`, `.doc`, `.rtf`, `.txt` | All + PDF |
+| **Spreadsheets** | `.ods`, `.xlsx` | `.ods`, `.xlsx`, `.xls`, `.csv` | All + PDF |
+| **Presentations** | `.odp`, `.pptx` | `.odp`, `.pptx`, `.ppt` | All + PDF |
+| **Drawings** | `.odg` | `.odg` | PDF |
+
+### Features
+
+- **Create** - New documents in ODF or MS Office formats
+- **Edit** - Full editing with Collabora Online
+- **Export** - Convert and download in different formats
+- **Save As** - Create copies with format conversion
+
+📚 **See [docs/FILE-FORMATS.md](docs/FILE-FORMATS.md) for the complete file format guide.**
+
+## 🔒 SSL Certificates
 
 ### Using Existing Certificates
 
