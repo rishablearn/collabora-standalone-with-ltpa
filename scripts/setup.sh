@@ -165,27 +165,35 @@ else
     cp .env.example .env
 fi
 
-# Generate secure secrets
+# Generate secure secrets (using hex to avoid special characters in sed)
 JWT_SECRET=$(openssl rand -hex 32)
 WOPI_SECRET=$(openssl rand -hex 32)
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
-COLLABORA_ADMIN_PASSWORD=$(openssl rand -base64 12)
+# Use hex for admin password too, then take first 16 chars for readability
+COLLABORA_ADMIN_PASSWORD=$(openssl rand -hex 8)
 
-# Update .env file (macOS compatible)
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS requires empty string for -i
-    sed -i '' "s/DOMAIN=.*/DOMAIN=${DOMAIN}/" .env
-    sed -i '' "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
-    sed -i '' "s/WOPI_SECRET=.*/WOPI_SECRET=${WOPI_SECRET}/" .env
-    sed -i '' "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
-    sed -i '' "s/COLLABORA_ADMIN_PASSWORD=.*/COLLABORA_ADMIN_PASSWORD=${COLLABORA_ADMIN_PASSWORD}/" .env
-else
-    sed -i "s/DOMAIN=.*/DOMAIN=${DOMAIN}/" .env
-    sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
-    sed -i "s/WOPI_SECRET=.*/WOPI_SECRET=${WOPI_SECRET}/" .env
-    sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
-    sed -i "s/COLLABORA_ADMIN_PASSWORD=.*/COLLABORA_ADMIN_PASSWORD=${COLLABORA_ADMIN_PASSWORD}/" .env
-fi
+# Function to safely update .env values (handles special characters)
+update_env_value() {
+    local key=$1
+    local value=$2
+    local file=$3
+    
+    # Escape special characters for sed
+    local escaped_value=$(printf '%s\n' "$value" | sed 's/[&/\]/\\&/g')
+    
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|^${key}=.*|${key}=${escaped_value}|" "$file"
+    else
+        sed -i "s|^${key}=.*|${key}=${escaped_value}|" "$file"
+    fi
+}
+
+# Update .env file using pipe delimiter to avoid conflicts with paths/special chars
+update_env_value "DOMAIN" "$DOMAIN" ".env"
+update_env_value "JWT_SECRET" "$JWT_SECRET" ".env"
+update_env_value "WOPI_SECRET" "$WOPI_SECRET" ".env"
+update_env_value "POSTGRES_PASSWORD" "$POSTGRES_PASSWORD" ".env"
+update_env_value "COLLABORA_ADMIN_PASSWORD" "$COLLABORA_ADMIN_PASSWORD" ".env"
 
 echo -e "  ✓ Environment file configured"
 
