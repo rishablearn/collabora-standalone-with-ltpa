@@ -348,27 +348,35 @@ case $AUTH_OPTION in
         LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"${LDAP_FILTER_DEFAULT}"}
         read -p "Enable LDAP debug logging? (y/N): " ENABLE_DEBUG_LDAP
         
-        # Comment out LTPA settings since we're using LDAP
+        # Comment out ALL existing LDAP and LTPA settings from template, then add fresh values
+        comment_ldap_settings ".env"
         comment_ltpa_settings ".env"
         
         # Update .env with LDAP settings
-        cat >> .env << 'ENVBLOCK'
-
-# LDAP Authentication
-AUTH_MODE=ldap
-ENVBLOCK
-        echo "DEBUG_LDAP=$( [ \"$ENABLE_DEBUG_LDAP\" = \"y\" ] || [ \"$ENABLE_DEBUG_LDAP\" = \"Y\" ] && echo \"true\" || echo \"false\" )" >> .env
-        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
-        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
-        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
-        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
-        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
-        echo "LDAP_USERNAME_ATTR=${LDAP_USERNAME_ATTR_DEFAULT}" >> .env
-        echo "LDAP_EMAIL_ATTR=mail" >> .env
-        echo "LDAP_DISPLAY_NAME_ATTR=${LDAP_DISPLAY_NAME_DEFAULT}" >> .env
-        echo "LDAP_ADMIN_GROUP=cn=admins" >> .env
-        echo "LDAP_SERVER_TYPE=${LDAP_SERVER_TYPE}" >> .env
+        # Calculate debug value
+        if [ "$ENABLE_DEBUG_LDAP" = "y" ] || [ "$ENABLE_DEBUG_LDAP" = "Y" ]; then
+            DEBUG_LDAP_VAL="true"
+        else
+            DEBUG_LDAP_VAL="false"
+        fi
+        
+        {
+            echo ""
+            echo "# LDAP Authentication"
+            echo "AUTH_MODE=ldap"
+            echo "DEBUG_LDAP=${DEBUG_LDAP_VAL}"
+            echo "LDAP_URL=${LDAP_URL}"
+            echo "LDAP_BASE_DN=${LDAP_BASE_DN}"
+            echo "LDAP_BIND_DN=${LDAP_BIND_DN}"
+            echo "LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}"
+            echo "LDAP_USER_SEARCH_BASE=${LDAP_USER_SEARCH_BASE}"
+            echo "LDAP_USER_SEARCH_FILTER=\"${LDAP_USER_SEARCH_FILTER}\""
+            echo "LDAP_USERNAME_ATTR=${LDAP_USERNAME_ATTR_DEFAULT}"
+            echo "LDAP_EMAIL_ATTR=mail"
+            echo "LDAP_DISPLAY_NAME_ATTR=${LDAP_DISPLAY_NAME_DEFAULT}"
+            echo "LDAP_ADMIN_GROUP=cn=admins"
+            echo "LDAP_SERVER_TYPE=${LDAP_SERVER_TYPE}"
+        } >> .env
         echo -e "  ✓ LDAP configuration added to .env"
         ;;
     3)
@@ -379,8 +387,9 @@ ENVBLOCK
         echo ""
         read -p "Path to LTPA keys file (ltpa.keys), or press Enter to enter key manually: " LTPA_KEYS_PATH
         
-        # Comment out LDAP settings since we're using LTPA only
+        # Comment out ALL existing LDAP and LTPA settings from template, then add fresh values
         comment_ldap_settings ".env"
+        comment_ltpa_settings ".env"
         
         if [ -n "$LTPA_KEYS_PATH" ] && [ -f "$LTPA_KEYS_PATH" ]; then
             # Extract LTPA keys from keys file
@@ -395,21 +404,31 @@ ENVBLOCK
                 read -p "Domino user format - cn/uid/shortname/dn (default: cn): " LTPA_USER_FORMAT
                 read -p "Enable LTPA debug logging? (y/N): " ENABLE_DEBUG_LTPA
                 
-                cat >> .env << EOF
-
-# LTPA2 SSO Authentication
-AUTH_MODE=ltpa
-DEBUG_LTPA=$( [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ] && echo "true" || echo "false" )
-LTPA_SECRET_KEY=${LTPA_SECRET}
-LTPA_PUBLIC_KEY=${LTPA_PUBLIC}
-LTPA_PRIVATE_KEY=${LTPA_PRIVATE}
-LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
-LTPA_COOKIE_NAME_FALLBACK=LtpaToken
-LTPA_REALM=${LTPA_REALM:-${LTPA_REALM_FROM_FILE:-defaultRealm}}
-LTPA_TOKEN_EXPIRATION=7200
-LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
-LTPA_PREFER_AES=false
-EOF
+                # Calculate values
+                if [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ]; then
+                    DEBUG_LTPA_VAL="true"
+                else
+                    DEBUG_LTPA_VAL="false"
+                fi
+                LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
+                LTPA_REALM=${LTPA_REALM:-${LTPA_REALM_FROM_FILE:-defaultRealm}}
+                LTPA_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
+                
+                {
+                    echo ""
+                    echo "# LTPA2 SSO Authentication"
+                    echo "AUTH_MODE=ltpa"
+                    echo "DEBUG_LTPA=${DEBUG_LTPA_VAL}"
+                    echo "LTPA_SECRET_KEY=${LTPA_SECRET}"
+                    echo "LTPA_PUBLIC_KEY=${LTPA_PUBLIC}"
+                    echo "LTPA_PRIVATE_KEY=${LTPA_PRIVATE}"
+                    echo "LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME}"
+                    echo "LTPA_COOKIE_NAME_FALLBACK=LtpaToken"
+                    echo "LTPA_REALM=${LTPA_REALM}"
+                    echo "LTPA_TOKEN_EXPIRATION=7200"
+                    echo "LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT}"
+                    echo "LTPA_PREFER_AES=false"
+                } >> .env
                 echo -e "  ✓ LTPA configuration added to .env (keys extracted from file)"
             else
                 echo -e "${YELLOW}  Could not extract LTPA 3DES key from file. Please configure manually in .env${NC}"
@@ -421,19 +440,29 @@ EOF
             read -p "Domino user format - cn/uid/shortname/dn (default: cn): " LTPA_USER_FORMAT
             read -p "Enable LTPA debug logging? (y/N): " ENABLE_DEBUG_LTPA
             
-            cat >> .env << EOF
-
-# LTPA2 SSO Authentication
-AUTH_MODE=ltpa
-DEBUG_LTPA=$( [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ] && echo "true" || echo "false" )
-LTPA_SECRET_KEY=${LTPA_SECRET_KEY}
-LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
-LTPA_COOKIE_NAME_FALLBACK=LtpaToken
-LTPA_REALM=${LTPA_REALM:-defaultRealm}
-LTPA_TOKEN_EXPIRATION=7200
-LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
-LTPA_PREFER_AES=false
-EOF
+            # Calculate values
+            if [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ]; then
+                DEBUG_LTPA_VAL="true"
+            else
+                DEBUG_LTPA_VAL="false"
+            fi
+            LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
+            LTPA_REALM=${LTPA_REALM:-defaultRealm}
+            LTPA_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
+            
+            {
+                echo ""
+                echo "# LTPA2 SSO Authentication"
+                echo "AUTH_MODE=ltpa"
+                echo "DEBUG_LTPA=${DEBUG_LTPA_VAL}"
+                echo "LTPA_SECRET_KEY=${LTPA_SECRET_KEY}"
+                echo "LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME}"
+                echo "LTPA_COOKIE_NAME_FALLBACK=LtpaToken"
+                echo "LTPA_REALM=${LTPA_REALM}"
+                echo "LTPA_TOKEN_EXPIRATION=7200"
+                echo "LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT}"
+                echo "LTPA_PREFER_AES=false"
+            } >> .env
             echo -e "  ✓ LTPA configuration added to .env"
         fi
         ;;
@@ -453,27 +482,33 @@ EOF
         LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
         read -p "Enable LDAP debug logging? (y/N): " ENABLE_DEBUG_LDAP
         
-        # Comment out LTPA settings since we're using hybrid (LDAP + Local)
+        # Comment out ALL existing LDAP and LTPA settings from template, then add fresh values
+        comment_ldap_settings ".env"
         comment_ltpa_settings ".env"
         
         # Write config using echo to handle special characters properly
-        cat >> .env << 'ENVBLOCK'
-
-# Hybrid Authentication (LDAP + Local)
-AUTH_MODE=hybrid
-ENVBLOCK
-        echo "DEBUG_LDAP=$( [ \"$ENABLE_DEBUG_LDAP\" = \"y\" ] || [ \"$ENABLE_DEBUG_LDAP\" = \"Y\" ] && echo \"true\" || echo \"false\" )" >> .env
-        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
-        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
-        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
-        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
-        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
-        cat >> .env << 'ENVBLOCK'
-LDAP_USERNAME_ATTR=uid
-LDAP_EMAIL_ATTR=mail
-LDAP_DISPLAY_NAME_ATTR=cn
-ENVBLOCK
+        # Calculate debug value
+        if [ "$ENABLE_DEBUG_LDAP" = "y" ] || [ "$ENABLE_DEBUG_LDAP" = "Y" ]; then
+            DEBUG_LDAP_VAL="true"
+        else
+            DEBUG_LDAP_VAL="false"
+        fi
+        
+        {
+            echo ""
+            echo "# Hybrid Authentication (LDAP + Local)"
+            echo "AUTH_MODE=hybrid"
+            echo "DEBUG_LDAP=${DEBUG_LDAP_VAL}"
+            echo "LDAP_URL=${LDAP_URL}"
+            echo "LDAP_BASE_DN=${LDAP_BASE_DN}"
+            echo "LDAP_BIND_DN=${LDAP_BIND_DN}"
+            echo "LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}"
+            echo "LDAP_USER_SEARCH_BASE=${LDAP_USER_SEARCH_BASE}"
+            echo "LDAP_USER_SEARCH_FILTER=\"${LDAP_USER_SEARCH_FILTER}\""
+            echo "LDAP_USERNAME_ATTR=uid"
+            echo "LDAP_EMAIL_ATTR=mail"
+            echo "LDAP_DISPLAY_NAME_ATTR=cn"
+        } >> .env
         echo -e "  ✓ Hybrid authentication configuration added to .env"
         ;;
     5)
@@ -530,31 +565,45 @@ ENVBLOCK
         read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
         LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
         
+        read -p "Enable debug logging? (y/N): " ENABLE_DEBUG
+        
+        # Comment out ALL existing LDAP and LTPA settings from template, then add fresh values
+        comment_ldap_settings ".env"
+        comment_ltpa_settings ".env"
+        
+        # Calculate debug value
+        if [ "$ENABLE_DEBUG" = "y" ] || [ "$ENABLE_DEBUG" = "Y" ]; then
+            DEBUG_VAL="true"
+        else
+            DEBUG_VAL="false"
+        fi
+        
         # Write configuration using echo to handle special characters properly
-        cat >> .env << 'ENVBLOCK'
-
-# LDAP + LTPA Combined Authentication
-AUTH_MODE=ldap_ltpa
-
-# LDAP Settings
-ENVBLOCK
-        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
-        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
-        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
-        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
-        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
-        cat >> .env << 'ENVBLOCK'
-LDAP_USERNAME_ATTR=uid
-LDAP_EMAIL_ATTR=mail
-LDAP_DISPLAY_NAME_ATTR=cn
-
-# LTPA Settings
-ENVBLOCK
-        echo "LTPA_SECRET_KEY=\"${LTPA_SECRET}\"" >> .env
-        echo "LTPA_COOKIE_NAME=\"${LTPA_COOKIE_NAME}\"" >> .env
-        echo "LTPA_REALM=\"${LTPA_REALM}\"" >> .env
-        echo "LTPA_TOKEN_EXPIRATION=7200" >> .env
+        {
+            echo ""
+            echo "# LDAP + LTPA Combined Authentication"
+            echo "AUTH_MODE=ldap_ltpa"
+            echo "DEBUG_LDAP=${DEBUG_VAL}"
+            echo "DEBUG_LTPA=${DEBUG_VAL}"
+            echo ""
+            echo "# LDAP Settings"
+            echo "LDAP_URL=${LDAP_URL}"
+            echo "LDAP_BASE_DN=${LDAP_BASE_DN}"
+            echo "LDAP_BIND_DN=${LDAP_BIND_DN}"
+            echo "LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}"
+            echo "LDAP_USER_SEARCH_BASE=${LDAP_USER_SEARCH_BASE:-}"
+            echo "LDAP_USER_SEARCH_FILTER=\"${LDAP_USER_SEARCH_FILTER}\""
+            echo "LDAP_USERNAME_ATTR=uid"
+            echo "LDAP_EMAIL_ATTR=mail"
+            echo "LDAP_DISPLAY_NAME_ATTR=cn"
+            echo ""
+            echo "# LTPA Settings"
+            echo "LTPA_SECRET_KEY=${LTPA_SECRET}"
+            echo "LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME}"
+            echo "LTPA_COOKIE_NAME_FALLBACK=LtpaToken"
+            echo "LTPA_REALM=${LTPA_REALM}"
+            echo "LTPA_TOKEN_EXPIRATION=7200"
+        } >> .env
         echo -e "  ✓ LDAP + LTPA configuration added to .env"
         
         if [ -z "$LTPA_SECRET" ]; then
