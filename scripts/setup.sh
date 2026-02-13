@@ -188,6 +188,38 @@ update_env_value() {
     fi
 }
 
+# Function to comment out a line in .env file
+comment_env_line() {
+    local key=$1
+    local file=$2
+    
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|^${key}=|# ${key}=|" "$file"
+    else
+        sed -i "s|^${key}=|# ${key}=|" "$file"
+    fi
+}
+
+# Function to comment out all LDAP settings
+comment_ldap_settings() {
+    local file=$1
+    local ldap_keys="LDAP_URL LDAP_BASE_DN LDAP_BIND_DN LDAP_BIND_PASSWORD LDAP_USER_SEARCH_BASE LDAP_USER_SEARCH_FILTER LDAP_GROUP_SEARCH_BASE LDAP_GROUP_SEARCH_FILTER LDAP_USERNAME_ATTR LDAP_EMAIL_ATTR LDAP_DISPLAY_NAME_ATTR LDAP_ADMIN_GROUP LDAP_TLS_REJECT_UNAUTHORIZED LDAP_TIMEOUT LDAP_CONNECT_TIMEOUT LDAP_DOMINO_MODE LDAP_IDLE_TIMEOUT DEBUG_LDAP"
+    
+    for key in $ldap_keys; do
+        comment_env_line "$key" "$file"
+    done
+}
+
+# Function to comment out all LTPA settings
+comment_ltpa_settings() {
+    local file=$1
+    local ltpa_keys="LTPA_SECRET_KEY LTPA_PUBLIC_KEY LTPA_PRIVATE_KEY LTPA_COOKIE_NAME LTPA_REALM LTPA_TOKEN_EXPIRATION LTPA_TRUSTED_DOMAINS"
+    
+    for key in $ltpa_keys; do
+        comment_env_line "$key" "$file"
+    done
+}
+
 # Update .env file using pipe delimiter to avoid conflicts with paths/special chars
 update_env_value "DOMAIN" "$DOMAIN" ".env"
 update_env_value "JWT_SECRET" "$JWT_SECRET" ".env"
@@ -273,36 +305,70 @@ case $AUTH_OPTION in
         AUTH_MODE="ldap"
         echo ""
         echo -e "${BLUE}LDAP Configuration${NC}"
+        echo ""
+        echo "LDAP Server Type:"
+        echo "  1) OpenLDAP"
+        echo "  2) Active Directory"
+        echo "  3) IBM Domino LDAP"
+        echo "  4) Other/Custom"
+        read -p "Select LDAP server type [1-4] (default: 1): " LDAP_TYPE
+        
+        # Set defaults based on LDAP type
+        case $LDAP_TYPE in
+            2)
+                LDAP_USERNAME_ATTR_DEFAULT="sAMAccountName"
+                LDAP_FILTER_DEFAULT="(&(sAMAccountName={{username}})(objectclass=user))"
+                LDAP_DISPLAY_NAME_DEFAULT="displayName"
+                LDAP_DOMINO_MODE="false"
+                ;;
+            3)
+                LDAP_USERNAME_ATTR_DEFAULT="cn"
+                LDAP_FILTER_DEFAULT="(&(cn={{username}})(objectclass=dominoPerson))"
+                LDAP_DISPLAY_NAME_DEFAULT="cn"
+                LDAP_DOMINO_MODE="true"
+                ;;
+            *)
+                LDAP_USERNAME_ATTR_DEFAULT="uid"
+                LDAP_FILTER_DEFAULT="(uid={{username}})"
+                LDAP_DISPLAY_NAME_DEFAULT="cn"
+                LDAP_DOMINO_MODE="false"
+                ;;
+        esac
+        
+        echo ""
         read -p "LDAP Server URL (e.g., ldap://ldap.example.com:389): " LDAP_URL
-        read -p "LDAP Base DN (e.g., dc=example,dc=com): " LDAP_BASE_DN
+        read -p "LDAP Base DN (e.g., dc=example,dc=com or o=MyOrg): " LDAP_BASE_DN
         read -p "LDAP Bind DN (service account, leave empty for anonymous): " LDAP_BIND_DN
         if [ -n "$LDAP_BIND_DN" ]; then
             read -sp "LDAP Bind Password: " LDAP_BIND_PASSWORD
             echo ""
         fi
-        read -p "LDAP User Search Base (e.g., ou=users): " LDAP_USER_SEARCH_BASE
-        read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
-        LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
+        read -p "LDAP User Search Base (e.g., ou=users, leave empty for baseDN): " LDAP_USER_SEARCH_BASE
+        read -p "LDAP User Search Filter (default: ${LDAP_FILTER_DEFAULT}): " LDAP_USER_SEARCH_FILTER
+        LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"${LDAP_FILTER_DEFAULT}"}
+        read -p "Enable LDAP debug logging? (y/N): " ENABLE_DEBUG_LDAP
+        
+        # Comment out LTPA settings since we're using LDAP
+        comment_ltpa_settings ".env"
         
         # Update .env with LDAP settings
-        # Use single quotes for LDAP_USER_SEARCH_FILTER to preserve special chars like & in filters
         cat >> .env << 'ENVBLOCK'
 
 # LDAP Authentication
 AUTH_MODE=ldap
 ENVBLOCK
+        echo "DEBUG_LDAP=$( [ \"$ENABLE_DEBUG_LDAP\" = \"y\" ] || [ \"$ENABLE_DEBUG_LDAP\" = \"Y\" ] && echo \"true\" || echo \"false\" )" >> .env
         echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
         echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
         echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
         echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
-        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
-        cat >> .env << 'ENVBLOCK'
-LDAP_USERNAME_ATTR=uid
-LDAP_EMAIL_ATTR=mail
-LDAP_DISPLAY_NAME_ATTR=cn
-LDAP_ADMIN_GROUP=cn=admins
-ENVBLOCK
+        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE}\"" >> .env
+        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
+        echo "LDAP_USERNAME_ATTR=${LDAP_USERNAME_ATTR_DEFAULT}" >> .env
+        echo "LDAP_EMAIL_ATTR=mail" >> .env
+        echo "LDAP_DISPLAY_NAME_ATTR=${LDAP_DISPLAY_NAME_DEFAULT}" >> .env
+        echo "LDAP_ADMIN_GROUP=cn=admins" >> .env
+        echo "LDAP_DOMINO_MODE=${LDAP_DOMINO_MODE}" >> .env
         echo -e "  ✓ LDAP configuration added to .env"
         ;;
     3)
@@ -311,6 +377,9 @@ ENVBLOCK
         echo -e "${BLUE}LTPA2 SSO Configuration${NC}"
         echo "You need the LTPA keys from your WebSphere/Liberty server."
         read -p "Path to LTPA keys file (ltpa.keys): " LTPA_KEYS_PATH
+        
+        # Comment out LDAP settings since we're using LTPA only
+        comment_ldap_settings ".env"
         
         if [ -f "$LTPA_KEYS_PATH" ]; then
             # Extract LTPA secret from keys file
@@ -357,9 +426,13 @@ EOF
             read -sp "LDAP Bind Password: " LDAP_BIND_PASSWORD
             echo ""
         fi
-        
+        read -p "LDAP User Search Base (e.g., ou=users, leave empty for baseDN): " LDAP_USER_SEARCH_BASE
         read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
         LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
+        read -p "Enable LDAP debug logging? (y/N): " ENABLE_DEBUG_LDAP
+        
+        # Comment out LTPA settings since we're using hybrid (LDAP + Local)
+        comment_ltpa_settings ".env"
         
         # Write config using echo to handle special characters properly
         cat >> .env << 'ENVBLOCK'
@@ -367,12 +440,13 @@ EOF
 # Hybrid Authentication (LDAP + Local)
 AUTH_MODE=hybrid
 ENVBLOCK
+        echo "DEBUG_LDAP=$( [ \"$ENABLE_DEBUG_LDAP\" = \"y\" ] || [ \"$ENABLE_DEBUG_LDAP\" = \"Y\" ] && echo \"true\" || echo \"false\" )" >> .env
         echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
         echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
         echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
         echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
-        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
+        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE}\"" >> .env
+        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
         cat >> .env << 'ENVBLOCK'
 LDAP_USERNAME_ATTR=uid
 LDAP_EMAIL_ATTR=mail
@@ -447,7 +521,7 @@ ENVBLOCK
         echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
         echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
         echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
-        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
+        echo "LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER}" >> .env
         cat >> .env << 'ENVBLOCK'
 LDAP_USERNAME_ATTR=uid
 LDAP_EMAIL_ATTR=mail
@@ -471,7 +545,11 @@ ENVBLOCK
         ;;
     *)
         AUTH_MODE="local"
+        # Comment out both LDAP and LTPA settings since we're using local auth only
+        comment_ldap_settings ".env"
+        comment_ltpa_settings ".env"
         echo -e "  ✓ Using local authentication (default)"
+        echo -e "  ✓ LDAP and LTPA settings commented out in .env"
         ;;
 esac
 

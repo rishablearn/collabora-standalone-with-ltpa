@@ -151,16 +151,41 @@ router.post('/login', loginValidation, async (req, res) => {
     let authSource = 'local';
 
     // Try LDAP authentication if enabled
-    if (AUTH_MODE === 'ldap' || AUTH_MODE === 'hybrid') {
+    if (AUTH_MODE === 'ldap' || AUTH_MODE === 'hybrid' || AUTH_MODE === 'ldap_ltpa') {
+      logger.info('Attempting LDAP authentication', { 
+        loginIdentifier, 
+        authMode: AUTH_MODE,
+        ldapUrl: process.env.LDAP_URL 
+      });
+      
       try {
         const ldapUser = await ldapService.authenticate(loginIdentifier, password);
         if (ldapUser) {
+          logger.info('LDAP authentication successful', { 
+            username: ldapUser.username,
+            email: ldapUser.email 
+          });
           authSource = 'ldap';
           // Find or create user from LDAP
           user = await findOrCreateLDAPUser(ldapUser);
+        } else {
+          logger.warn('LDAP authentication returned null - user not found or invalid password', { 
+            loginIdentifier 
+          });
         }
       } catch (ldapErr) {
-        logger.warn('LDAP authentication failed, trying local', { error: ldapErr.message });
+        logger.error('LDAP authentication error', { 
+          error: ldapErr.message,
+          stack: ldapErr.stack,
+          loginIdentifier 
+        });
+        // Only fall through to local auth if in hybrid mode
+        if (AUTH_MODE !== 'hybrid') {
+          return res.status(401).json({ 
+            error: 'LDAP authentication failed',
+            details: process.env.NODE_ENV !== 'production' ? ldapErr.message : undefined
+          });
+        }
       }
     }
 
