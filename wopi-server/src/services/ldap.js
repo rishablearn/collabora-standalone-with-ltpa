@@ -341,7 +341,8 @@ class LDAPService {
   }
 
   /**
-   * Build the LDAP search filter, replacing {{username}} placeholder.
+   * Build the LDAP search filter, replacing username placeholder.
+   * Supports multiple placeholder formats: {{username}}, {username}, %s, $username
    *
    * Domino LDAP specifics:
    *  - Does NOT have a 'uid' attribute by default
@@ -354,11 +355,28 @@ class LDAPService {
     // Log the raw filter from environment for debugging
     ldapDebug('Raw filter from config', { 
       rawFilter: this.config.userSearchFilter,
-      rawEnvValue: process.env.LDAP_USER_SEARCH_FILTER 
+      rawEnvValue: process.env.LDAP_USER_SEARCH_FILTER,
+      username: username
     });
     
     const escapedUsername = this.escapeLDAPFilter(username);
-    let filter = this.config.userSearchFilter.replace(/\{\{username\}\}/g, escapedUsername);
+    let filter = this.config.userSearchFilter;
+    
+    // Support multiple placeholder formats
+    filter = filter.replace(/\{\{username\}\}/gi, escapedUsername);  // {{username}}
+    filter = filter.replace(/\{username\}/gi, escapedUsername);       // {username}
+    filter = filter.replace(/%s/g, escapedUsername);                  // %s
+    filter = filter.replace(/\$username/gi, escapedUsername);         // $username
+    
+    // If filter still contains a lone * as the value (wildcard), replace with username
+    // This handles filters like (uid=*) which should be (uid=actualuser)
+    if (filter.includes('=*)') || filter.includes('= *)')) {
+      logger.warn('LDAP filter contains wildcard (*) - replacing with username', {
+        originalFilter: filter,
+        username: escapedUsername
+      });
+      filter = filter.replace(/=\s*\*\)/g, `=${escapedUsername})`);
+    }
 
     // Sanitize the filter - remove invalid chars, balance parens
     filter = this._sanitizeFilter(filter);
@@ -384,6 +402,7 @@ class LDAPService {
     ldapDebug('Filter built', {
       raw: this.config.userSearchFilter,
       final: filter,
+      username: escapedUsername,
       serverType: this.config.serverType
     });
     return filter;
