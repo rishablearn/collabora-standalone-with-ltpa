@@ -8,7 +8,9 @@ const ldapService = require('../services/ldap');
 const ltpaService = require('../services/ltpa');
 
 const router = express.Router();
-const AUTH_MODE = process.env.AUTH_MODE || 'local'; // local, ldap, ltpa, hybrid
+const AUTH_MODE = process.env.AUTH_MODE || 'local'; // local, ldap, ltpa, ldap_ltpa, hybrid
+
+logger.info('Auth routes initialized', { authMode: AUTH_MODE });
 
 // Validation rules
 const registerValidation = [
@@ -18,9 +20,15 @@ const registerValidation = [
   body('displayName').optional().trim().escape()
 ];
 
+// Login validation - accept either email or username
 const loginValidation = [
-  body('email').isEmail().normalizeEmail(),
-  body('password').exists()
+  body('password').exists(),
+  body().custom((value) => {
+    if (!value.email && !value.username) {
+      throw new Error('Email or username is required');
+    }
+    return true;
+  })
 ];
 
 /**
@@ -136,7 +144,8 @@ router.post('/register', registerValidation, async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Authenticate user (supports local, LDAP, and hybrid modes)
+ * Authenticate user (supports local, LDAP, LTPA, ldap_ltpa, and hybrid modes)
+ * Accepts: { email, password } or { username, password }
  */
 router.post('/login', loginValidation, async (req, res) => {
   try {
@@ -150,8 +159,15 @@ router.post('/login', loginValidation, async (req, res) => {
     let user = null;
     let authSource = 'local';
 
+    logger.info('Login attempt', { 
+      loginIdentifier, 
+      authMode: AUTH_MODE,
+      hasEmail: !!email,
+      hasUsername: !!username
+    });
+
     // Try LDAP authentication if enabled
-    if (AUTH_MODE === 'ldap' || AUTH_MODE === 'hybrid' || AUTH_MODE === 'ldap_ltpa') {
+    if (['ldap', 'hybrid', 'ldap_ltpa'].includes(AUTH_MODE)) {
       logger.info('Attempting LDAP authentication', { 
         loginIdentifier, 
         authMode: AUTH_MODE,
@@ -163,27 +179,27 @@ router.post('/login', loginValidation, async (req, res) => {
         if (ldapUser) {
           logger.info('LDAP authentication successful', { 
             username: ldapUser.username,
-            email: ldapUser.email 
+            email: ldapUser.email,
+            isDomino: ldapUser.isDomino
           });
-          authSource = 'ldap';
+          authSource = AUTH_MODE === 'ldap_ltpa' ? 'ldap_ltpa' : 'ldap';
           // Find or create user from LDAP
           user = await findOrCreateLDAPUser(ldapUser);
         } else {
-          logger.warn('LDAP authentication returned null - user not found or invalid password', { 
-            loginIdentifier 
-          });
+          logger.warn('LDAP authentication returned null', { loginIdentifier });
         }
       } catch (ldapErr) {
         logger.error('LDAP authentication error', { 
           error: ldapErr.message,
-          stack: ldapErr.stack,
+          hint: ldapErr.hint,
           loginIdentifier 
         });
         // Only fall through to local auth if in hybrid mode
         if (AUTH_MODE !== 'hybrid') {
           return res.status(401).json({ 
-            error: 'LDAP authentication failed',
-            details: process.env.NODE_ENV !== 'production' ? ldapErr.message : undefined
+            error: 'Authentication failed',
+            details: process.env.NODE_ENV !== 'production' ? ldapErr.message : undefined,
+            hint: process.env.NODE_ENV !== 'production' ? ldapErr.hint : undefined
           });
         }
       }
@@ -198,7 +214,7 @@ router.post('/login', loginValidation, async (req, res) => {
 
       if (result.rows.length > 0) {
         const localUser = result.rows[0];
-        // Skip password check for LDAP/LTPA users
+        // Skip password check for LDAP/LTPA users (they have placeholder hashes)
         if (localUser.auth_source === 'local' || !localUser.auth_source) {
           const validPassword = await bcrypt.compare(password, localUser.password_hash);
           if (validPassword) {
@@ -210,6 +226,7 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     if (!user) {
+      logger.warn('Login failed - invalid credentials', { loginIdentifier, authMode: AUTH_MODE });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -219,32 +236,42 @@ router.post('/login', loginValidation, async (req, res) => {
       [user.id]
     );
 
-    // Generate tokens
+    // Generate JWT tokens
     const token = generateToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    // Generate LTPA token if enabled
+    // Generate LTPA token if in LTPA-enabled modes
     let ltpaToken = null;
-    if (AUTH_MODE === 'ltpa' || AUTH_MODE === 'hybrid') {
+    if (['ltpa', 'ldap_ltpa', 'hybrid'].includes(AUTH_MODE)) {
       try {
         ltpaToken = ltpaService.generateToken(user.username, {
           mail: user.email,
           cn: user.display_name
         });
         ltpaService.setTokenCookie(res, ltpaToken);
+        logger.info('LTPA token generated and set as cookie', { username: user.username });
       } catch (ltpaErr) {
         logger.warn('Failed to generate LTPA token', { error: ltpaErr.message });
       }
     }
 
     // Log audit
-    await pool.query(
-      `INSERT INTO audit_log (user_id, action, resource_type, details, ip_address) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [user.id, 'LOGIN', 'user', JSON.stringify({ email: user.email, authSource }), req.ip]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO audit_log (user_id, action, resource_type, details, ip_address) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [user.id, 'LOGIN', 'user', JSON.stringify({ email: user.email, authSource }), req.ip]
+      );
+    } catch (auditErr) {
+      logger.warn('Failed to log audit for login', { error: auditErr.message });
+    }
 
-    logger.info(`User logged in: ${user.email} via ${authSource}`);
+    logger.info('Login successful', { 
+      userId: user.id, 
+      email: user.email, 
+      authSource,
+      hasLtpaToken: !!ltpaToken
+    });
 
     res.json({
       user: {
@@ -259,8 +286,11 @@ router.post('/login', loginValidation, async (req, res) => {
       authSource
     });
   } catch (error) {
-    logger.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    logger.error('Login error', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      error: 'Login failed',
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
   }
 });
 

@@ -28,8 +28,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
+  const login = async (identifier, password) => {
+    // Detect if identifier is an email or username
+    const isEmail = identifier.includes('@');
+    const payload = isEmail 
+      ? { email: identifier, password }
+      : { username: identifier, password };
+    
+    const response = await api.post('/auth/login', payload);
     const { user, token, refreshToken } = response.data;
     localStorage.setItem('token', token);
     localStorage.setItem('refreshToken', refreshToken);

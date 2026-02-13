@@ -7,7 +7,7 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -21,11 +21,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(identifier, password);
       toast.success('Welcome back!');
       navigate('/');
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Login failed');
+      const errMsg = error.response?.data?.error || 'Login failed';
+      const hint = error.response?.data?.hint;
+      toast.error(hint ? `${errMsg}: ${hint}` : errMsg);
     } finally {
       setLoading(false);
     }
@@ -63,29 +65,29 @@ export default function Login() {
         <div className="bg-white/80 backdrop-blur-xl py-10 px-6 shadow-2xl rounded-2xl sm:px-12 border border-white/20">
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                Email address
+              <label htmlFor="identifier" className="block text-sm font-semibold text-gray-700 mb-2">
+                {text.loginFieldLabel || 'Email or Username'}
               </label>
               <div className={`relative rounded-xl transition-all duration-200 ${
-                focusedField === 'email' ? 'ring-2 ring-primary-500 ring-offset-2' : ''
+                focusedField === 'identifier' ? 'ring-2 ring-primary-500 ring-offset-2' : ''
               }`}>
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <Mail className={`h-5 w-5 transition-colors duration-200 ${
-                    focusedField === 'email' ? 'text-primary-500' : 'text-gray-400'
+                    focusedField === 'identifier' ? 'text-primary-500' : 'text-gray-400'
                   }`} />
                 </div>
                 <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
+                  id="identifier"
+                  name="identifier"
+                  type="text"
+                  autoComplete="username"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onFocus={() => setFocusedField('email')}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  onFocus={() => setFocusedField('identifier')}
                   onBlur={() => setFocusedField(null)}
                   className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50/50 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-primary-500 text-gray-900 text-sm transition-all duration-200"
-                  placeholder="you@example.com"
+                  placeholder={text.loginFieldPlaceholder || 'you@example.com or username'}
                 />
               </div>
             </div>

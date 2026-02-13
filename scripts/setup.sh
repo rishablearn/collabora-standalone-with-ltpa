@@ -203,7 +203,7 @@ comment_env_line() {
 # Function to comment out all LDAP settings
 comment_ldap_settings() {
     local file=$1
-    local ldap_keys="LDAP_URL LDAP_BASE_DN LDAP_BIND_DN LDAP_BIND_PASSWORD LDAP_USER_SEARCH_BASE LDAP_USER_SEARCH_FILTER LDAP_GROUP_SEARCH_BASE LDAP_GROUP_SEARCH_FILTER LDAP_USERNAME_ATTR LDAP_EMAIL_ATTR LDAP_DISPLAY_NAME_ATTR LDAP_ADMIN_GROUP LDAP_TLS_REJECT_UNAUTHORIZED LDAP_TIMEOUT LDAP_CONNECT_TIMEOUT LDAP_DOMINO_MODE LDAP_IDLE_TIMEOUT DEBUG_LDAP"
+    local ldap_keys="LDAP_URL LDAP_BASE_DN LDAP_BIND_DN LDAP_BIND_PASSWORD LDAP_USER_SEARCH_BASE LDAP_USER_SEARCH_FILTER LDAP_GROUP_SEARCH_BASE LDAP_GROUP_SEARCH_FILTER LDAP_USERNAME_ATTR LDAP_EMAIL_ATTR LDAP_DISPLAY_NAME_ATTR LDAP_ADMIN_GROUP LDAP_SERVER_TYPE LDAP_TLS_REJECT_UNAUTHORIZED LDAP_TIMEOUT LDAP_CONNECT_TIMEOUT LDAP_IDLE_TIMEOUT LDAP_SEARCH_BY_EMAIL DEBUG_LDAP"
     
     for key in $ldap_keys; do
         comment_env_line "$key" "$file"
@@ -213,7 +213,7 @@ comment_ldap_settings() {
 # Function to comment out all LTPA settings
 comment_ltpa_settings() {
     local file=$1
-    local ltpa_keys="LTPA_SECRET_KEY LTPA_PUBLIC_KEY LTPA_PRIVATE_KEY LTPA_COOKIE_NAME LTPA_REALM LTPA_TOKEN_EXPIRATION LTPA_TRUSTED_DOMAINS"
+    local ltpa_keys="LTPA_SECRET_KEY LTPA_PUBLIC_KEY LTPA_PRIVATE_KEY LTPA_COOKIE_NAME LTPA_COOKIE_NAME_FALLBACK LTPA_REALM LTPA_TOKEN_EXPIRATION LTPA_TRUSTED_DOMAINS LTPA_DOMINO_USER_FORMAT LTPA_PREFER_AES DEBUG_LTPA"
     
     for key in $ltpa_keys; do
         comment_env_line "$key" "$file"
@@ -319,19 +319,19 @@ case $AUTH_OPTION in
                 LDAP_USERNAME_ATTR_DEFAULT="sAMAccountName"
                 LDAP_FILTER_DEFAULT="(&(sAMAccountName={{username}})(objectclass=user))"
                 LDAP_DISPLAY_NAME_DEFAULT="displayName"
-                LDAP_DOMINO_MODE="false"
+                LDAP_SERVER_TYPE="ad"
                 ;;
             3)
                 LDAP_USERNAME_ATTR_DEFAULT="cn"
-                LDAP_FILTER_DEFAULT="(&(cn={{username}})(objectclass=dominoPerson))"
+                LDAP_FILTER_DEFAULT="(&(mail={{username}})(objectclass=dominoPerson))"
                 LDAP_DISPLAY_NAME_DEFAULT="cn"
-                LDAP_DOMINO_MODE="true"
+                LDAP_SERVER_TYPE="domino"
                 ;;
             *)
                 LDAP_USERNAME_ATTR_DEFAULT="uid"
                 LDAP_FILTER_DEFAULT="(uid={{username}})"
                 LDAP_DISPLAY_NAME_DEFAULT="cn"
-                LDAP_DOMINO_MODE="false"
+                LDAP_SERVER_TYPE="openldap"
                 ;;
         esac
         
@@ -368,49 +368,71 @@ ENVBLOCK
         echo "LDAP_EMAIL_ATTR=mail" >> .env
         echo "LDAP_DISPLAY_NAME_ATTR=${LDAP_DISPLAY_NAME_DEFAULT}" >> .env
         echo "LDAP_ADMIN_GROUP=cn=admins" >> .env
-        echo "LDAP_DOMINO_MODE=${LDAP_DOMINO_MODE}" >> .env
+        echo "LDAP_SERVER_TYPE=${LDAP_SERVER_TYPE}" >> .env
         echo -e "  ✓ LDAP configuration added to .env"
         ;;
     3)
         AUTH_MODE="ltpa"
         echo ""
         echo -e "${BLUE}LTPA2 SSO Configuration${NC}"
-        echo "You need the LTPA keys from your WebSphere/Liberty server."
-        read -p "Path to LTPA keys file (ltpa.keys): " LTPA_KEYS_PATH
+        echo "Supports IBM Domino, WebSphere, and Liberty LTPA2 tokens."
+        echo ""
+        read -p "Path to LTPA keys file (ltpa.keys), or press Enter to enter key manually: " LTPA_KEYS_PATH
         
         # Comment out LDAP settings since we're using LTPA only
         comment_ldap_settings ".env"
         
-        if [ -f "$LTPA_KEYS_PATH" ]; then
-            # Extract LTPA secret from keys file
+        if [ -n "$LTPA_KEYS_PATH" ] && [ -f "$LTPA_KEYS_PATH" ]; then
+            # Extract LTPA keys from keys file
             LTPA_SECRET=$(grep -E "^com.ibm.websphere.ltpa.3DESKey=" "$LTPA_KEYS_PATH" | cut -d'=' -f2)
+            LTPA_PUBLIC=$(grep -E "^com.ibm.websphere.ltpa.PublicKey=" "$LTPA_KEYS_PATH" | cut -d'=' -f2-)
+            LTPA_PRIVATE=$(grep -E "^com.ibm.websphere.ltpa.PrivateKey=" "$LTPA_KEYS_PATH" | cut -d'=' -f2-)
+            LTPA_REALM_FROM_FILE=$(grep -E "^com.ibm.websphere.ltpa.Realm=" "$LTPA_KEYS_PATH" | cut -d'=' -f2)
+            
             if [ -n "$LTPA_SECRET" ]; then
+                read -p "LTPA Cookie Name (default: LtpaToken2): " LTPA_COOKIE_NAME
+                read -p "LTPA Realm (from file: ${LTPA_REALM_FROM_FILE:-defaultRealm}): " LTPA_REALM
+                read -p "Domino user format - cn/uid/shortname/dn (default: cn): " LTPA_USER_FORMAT
+                read -p "Enable LTPA debug logging? (y/N): " ENABLE_DEBUG_LTPA
+                
                 cat >> .env << EOF
 
 # LTPA2 SSO Authentication
 AUTH_MODE=ltpa
+DEBUG_LTPA=$( [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ] && echo "true" || echo "false" )
 LTPA_SECRET_KEY=${LTPA_SECRET}
-LTPA_COOKIE_NAME=LtpaToken2
-LTPA_REALM=defaultRealm
+LTPA_PUBLIC_KEY=${LTPA_PUBLIC}
+LTPA_PRIVATE_KEY=${LTPA_PRIVATE}
+LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
+LTPA_COOKIE_NAME_FALLBACK=LtpaToken
+LTPA_REALM=${LTPA_REALM:-${LTPA_REALM_FROM_FILE:-defaultRealm}}
 LTPA_TOKEN_EXPIRATION=7200
+LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
+LTPA_PREFER_AES=false
 EOF
-                echo -e "  ✓ LTPA configuration added to .env"
+                echo -e "  ✓ LTPA configuration added to .env (keys extracted from file)"
             else
-                echo -e "${YELLOW}  Could not extract LTPA key. Please configure manually in .env${NC}"
+                echo -e "${YELLOW}  Could not extract LTPA 3DES key from file. Please configure manually in .env${NC}"
             fi
         else
-            read -p "LTPA Secret Key (base64): " LTPA_SECRET_KEY
+            read -p "LTPA Secret Key (base64, com.ibm.websphere.ltpa.3DESKey): " LTPA_SECRET_KEY
             read -p "LTPA Cookie Name (default: LtpaToken2): " LTPA_COOKIE_NAME
-            read -p "LTPA Realm: " LTPA_REALM
+            read -p "LTPA Realm (default: defaultRealm): " LTPA_REALM
+            read -p "Domino user format - cn/uid/shortname/dn (default: cn): " LTPA_USER_FORMAT
+            read -p "Enable LTPA debug logging? (y/N): " ENABLE_DEBUG_LTPA
             
             cat >> .env << EOF
 
 # LTPA2 SSO Authentication
 AUTH_MODE=ltpa
+DEBUG_LTPA=$( [ "$ENABLE_DEBUG_LTPA" = "y" ] || [ "$ENABLE_DEBUG_LTPA" = "Y" ] && echo "true" || echo "false" )
 LTPA_SECRET_KEY=${LTPA_SECRET_KEY}
 LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
+LTPA_COOKIE_NAME_FALLBACK=LtpaToken
 LTPA_REALM=${LTPA_REALM:-defaultRealm}
 LTPA_TOKEN_EXPIRATION=7200
+LTPA_DOMINO_USER_FORMAT=${LTPA_USER_FORMAT:-cn}
+LTPA_PREFER_AES=false
 EOF
             echo -e "  ✓ LTPA configuration added to .env"
         fi
