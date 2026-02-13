@@ -284,22 +284,25 @@ case $AUTH_OPTION in
         read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
         LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
         
-        # Update .env with LDAP settings (quote values that may contain spaces)
-        cat >> .env << EOF
+        # Update .env with LDAP settings
+        # Use single quotes for LDAP_USER_SEARCH_FILTER to preserve special chars like & in filters
+        cat >> .env << 'ENVBLOCK'
 
 # LDAP Authentication
 AUTH_MODE=ldap
-LDAP_URL="${LDAP_URL}"
-LDAP_BASE_DN="${LDAP_BASE_DN}"
-LDAP_BIND_DN="${LDAP_BIND_DN}"
-LDAP_BIND_PASSWORD="${LDAP_BIND_PASSWORD}"
-LDAP_USER_SEARCH_BASE="${LDAP_USER_SEARCH_BASE:-ou=users}"
-LDAP_USER_SEARCH_FILTER="${LDAP_USER_SEARCH_FILTER}"
+ENVBLOCK
+        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
+        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
+        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
+        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
+        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
+        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
+        cat >> .env << 'ENVBLOCK'
 LDAP_USERNAME_ATTR=uid
 LDAP_EMAIL_ATTR=mail
 LDAP_DISPLAY_NAME_ATTR=cn
 LDAP_ADMIN_GROUP=cn=admins
-EOF
+ENVBLOCK
         echo -e "  ✓ LDAP configuration added to .env"
         ;;
     3)
@@ -355,20 +358,26 @@ EOF
             echo ""
         fi
         
-        cat >> .env << EOF
+        read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
+        LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
+        
+        # Write config using echo to handle special characters properly
+        cat >> .env << 'ENVBLOCK'
 
 # Hybrid Authentication (LDAP + Local)
 AUTH_MODE=hybrid
-LDAP_URL="${LDAP_URL}"
-LDAP_BASE_DN="${LDAP_BASE_DN}"
-LDAP_BIND_DN="${LDAP_BIND_DN}"
-LDAP_BIND_PASSWORD="${LDAP_BIND_PASSWORD}"
-LDAP_USER_SEARCH_BASE="ou=users"
-LDAP_USER_SEARCH_FILTER="(uid={{username}})"
+ENVBLOCK
+        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
+        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
+        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
+        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
+        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
+        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
+        cat >> .env << 'ENVBLOCK'
 LDAP_USERNAME_ATTR=uid
 LDAP_EMAIL_ATTR=mail
 LDAP_DISPLAY_NAME_ATTR=cn
-EOF
+ENVBLOCK
         echo -e "  ✓ Hybrid authentication configuration added to .env"
         ;;
     5)
@@ -422,29 +431,34 @@ EOF
         read -p "LTPA Cookie Name (default: LtpaToken2): " LTPA_COOKIE_NAME
         LTPA_COOKIE_NAME=${LTPA_COOKIE_NAME:-LtpaToken2}
         
-        # Write configuration (quote values that may contain spaces)
-        cat >> .env << EOF
+        read -p "LDAP User Search Filter (default: (uid={{username}})): " LDAP_USER_SEARCH_FILTER
+        LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-"(uid={{username}})"}
+        
+        # Write configuration using echo to handle special characters properly
+        cat >> .env << 'ENVBLOCK'
 
 # LDAP + LTPA Combined Authentication
 AUTH_MODE=ldap_ltpa
 
 # LDAP Settings
-LDAP_URL="${LDAP_URL}"
-LDAP_BASE_DN="${LDAP_BASE_DN}"
-LDAP_BIND_DN="${LDAP_BIND_DN}"
-LDAP_BIND_PASSWORD="${LDAP_BIND_PASSWORD}"
-LDAP_USER_SEARCH_BASE="${LDAP_USER_SEARCH_BASE:-ou=users}"
-LDAP_USER_SEARCH_FILTER="(uid={{username}})"
+ENVBLOCK
+        echo "LDAP_URL=\"${LDAP_URL}\"" >> .env
+        echo "LDAP_BASE_DN=\"${LDAP_BASE_DN}\"" >> .env
+        echo "LDAP_BIND_DN=\"${LDAP_BIND_DN}\"" >> .env
+        echo "LDAP_BIND_PASSWORD=\"${LDAP_BIND_PASSWORD}\"" >> .env
+        echo "LDAP_USER_SEARCH_BASE=\"${LDAP_USER_SEARCH_BASE:-ou=users}\"" >> .env
+        echo "LDAP_USER_SEARCH_FILTER='${LDAP_USER_SEARCH_FILTER}'" >> .env
+        cat >> .env << 'ENVBLOCK'
 LDAP_USERNAME_ATTR=uid
 LDAP_EMAIL_ATTR=mail
 LDAP_DISPLAY_NAME_ATTR=cn
 
 # LTPA Settings
-LTPA_SECRET_KEY="${LTPA_SECRET}"
-LTPA_COOKIE_NAME="${LTPA_COOKIE_NAME}"
-LTPA_REALM="${LTPA_REALM}"
-LTPA_TOKEN_EXPIRATION=7200
-EOF
+ENVBLOCK
+        echo "LTPA_SECRET_KEY=\"${LTPA_SECRET}\"" >> .env
+        echo "LTPA_COOKIE_NAME=\"${LTPA_COOKIE_NAME}\"" >> .env
+        echo "LTPA_REALM=\"${LTPA_REALM}\"" >> .env
+        echo "LTPA_TOKEN_EXPIRATION=7200" >> .env
         echo -e "  ✓ LDAP + LTPA configuration added to .env"
         
         if [ -z "$LTPA_SECRET" ]; then
