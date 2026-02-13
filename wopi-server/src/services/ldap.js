@@ -13,14 +13,29 @@ function ldapDebug(message, data = {}) {
 /**
  * Strip surrounding quotes from environment variable values.
  * Docker/shell sometimes passes values with quotes included.
+ * Also handles escaped quotes and trims whitespace.
  */
 function stripQuotes(val) {
   if (!val) return val;
-  if ((val.startsWith("'") && val.endsWith("'")) ||
-      (val.startsWith('"') && val.endsWith('"'))) {
-    return val.slice(1, -1);
+  
+  // Trim whitespace first
+  let result = val.trim();
+  
+  // Remove surrounding single or double quotes
+  if ((result.startsWith("'") && result.endsWith("'")) ||
+      (result.startsWith('"') && result.endsWith('"'))) {
+    result = result.slice(1, -1);
   }
-  return val;
+  
+  // Handle escaped quotes that might be left over
+  result = result.replace(/\\"/g, '"').replace(/\\'/g, "'");
+  
+  // Log if there were quotes stripped (helps debug .env issues)
+  if (result !== val && DEBUG_LDAP) {
+    console.log(`[LDAP DEBUG] stripQuotes: "${val}" -> "${result}"`);
+  }
+  
+  return result;
 }
 
 /**
@@ -287,6 +302,45 @@ class LDAPService {
   }
 
   /**
+   * Sanitize LDAP filter - remove invalid characters and fix common issues.
+   */
+  _sanitizeFilter(filter) {
+    if (!filter) return filter;
+    
+    let sanitized = filter;
+    
+    // Remove any trailing/leading whitespace
+    sanitized = sanitized.trim();
+    
+    // Remove any stray curly braces that shouldn't be in LDAP filters
+    // (leftover from {{username}} placeholder if malformed)
+    sanitized = sanitized.replace(/\{+/g, '').replace(/\}+/g, '');
+    
+    // Remove any trailing characters that aren't valid filter endings
+    // Valid LDAP filter must end with )
+    while (sanitized.length > 0 && !sanitized.endsWith(')')) {
+      sanitized = sanitized.slice(0, -1);
+    }
+    
+    // Balance parentheses by removing extras from the end
+    let opens = (sanitized.match(/\(/g) || []).length;
+    let closes = (sanitized.match(/\)/g) || []).length;
+    
+    while (closes > opens && sanitized.endsWith(')')) {
+      sanitized = sanitized.slice(0, -1);
+      closes--;
+    }
+    
+    // If still unbalanced (more opens than closes), add closing parens
+    while (opens > closes) {
+      sanitized = sanitized + ')';
+      closes++;
+    }
+    
+    return sanitized;
+  }
+
+  /**
    * Build the LDAP search filter, replacing {{username}} placeholder.
    *
    * Domino LDAP specifics:
@@ -297,11 +351,17 @@ class LDAPService {
    *  - Domino supports standard LDAP filter syntax (RFC 4515)
    */
   _buildFilter(username) {
+    // Log the raw filter from environment for debugging
+    ldapDebug('Raw filter from config', { 
+      rawFilter: this.config.userSearchFilter,
+      rawEnvValue: process.env.LDAP_USER_SEARCH_FILTER 
+    });
+    
     const escapedUsername = this.escapeLDAPFilter(username);
     let filter = this.config.userSearchFilter.replace(/\{\{username\}\}/g, escapedUsername);
 
-    // Trim any whitespace that may have crept in
-    filter = filter.trim();
+    // Sanitize the filter - remove invalid chars, balance parens
+    filter = this._sanitizeFilter(filter);
 
     // Ensure the filter is wrapped in parentheses
     if (!filter.startsWith('(')) {
@@ -309,22 +369,16 @@ class LDAPService {
       ldapDebug('Wrapped filter in parentheses', { filter });
     }
 
-    // Validate balanced parentheses
+    // Final validation
     const opens = (filter.match(/\(/g) || []).length;
     const closes = (filter.match(/\)/g) || []).length;
     if (opens !== closes) {
-      logger.error('LDAP filter has unbalanced parentheses', {
+      logger.error('LDAP filter STILL has unbalanced parentheses after sanitization', {
         filter,
         openParens: opens,
         closeParens: closes,
         rawFilter: this.config.userSearchFilter
       });
-      // Attempt to fix by adding missing closing parens
-      const missing = opens - closes;
-      if (missing > 0) {
-        filter = filter + ')'.repeat(missing);
-        ldapDebug('Auto-fixed unbalanced filter by adding closing parens', { filter });
-      }
     }
 
     ldapDebug('Filter built', {
