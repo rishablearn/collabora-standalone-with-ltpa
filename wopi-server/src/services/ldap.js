@@ -141,13 +141,30 @@ class LDAPService {
    */
   async searchUser(client, username) {
     return new Promise((resolve, reject) => {
-      // Build search base - handle case where userSearchBase might be empty
+      // Build search base - for Domino LDAP, userSearchBase is often empty
+      // as users are directly under the organization (o=OrgName)
       let searchBase;
-      if (this.config.userSearchBase) {
-        searchBase = `${this.config.userSearchBase},${this.config.baseDN}`;
+      const userSearchBase = this.config.userSearchBase?.trim();
+      
+      if (userSearchBase) {
+        // Check if userSearchBase already contains a full DN (has = sign)
+        if (userSearchBase.includes('=')) {
+          // It's a full DN, use it directly
+          searchBase = userSearchBase;
+        } else {
+          // It's a relative path, append to baseDN
+          searchBase = `${userSearchBase},${this.config.baseDN}`;
+        }
       } else {
+        // No userSearchBase, search from baseDN directly (common for Domino)
         searchBase = this.config.baseDN;
       }
+      
+      ldapDebug('Search base constructed', { 
+        userSearchBase: this.config.userSearchBase,
+        baseDN: this.config.baseDN,
+        finalSearchBase: searchBase 
+      });
       
       // Escape special characters in username for LDAP filter
       const escapedUsername = this.escapeLDAPFilter(username);
@@ -267,7 +284,17 @@ class LDAPService {
         });
 
         res.on('error', (err) => {
-          ldapDebug('Search error', { error: err.message, code: err.code });
+          ldapDebug('Search error', { error: err.message, code: err.code, searchBase });
+          
+          // Provide helpful error messages for common LDAP errors
+          if (err.name === 'NoSuchObjectError' || err.message.includes('No Such Object')) {
+            logger.error('LDAP search base not found', { 
+              searchBase,
+              error: 'The search base DN does not exist in the LDAP directory',
+              hint: 'For Domino LDAP, try setting LDAP_USER_SEARCH_BASE to empty and use just the base DN (e.g., o=YourOrg)'
+            });
+          }
+          
           reject(err);
         });
 
