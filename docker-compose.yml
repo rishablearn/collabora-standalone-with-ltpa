@@ -87,6 +87,21 @@ services:
       - LTPA_TRUSTED_DOMAINS=${LTPA_TRUSTED_DOMAINS:-}
       - LTPA_DOMINO_USER_FORMAT=${LTPA_DOMINO_USER_FORMAT:-cn}
       - LTPA_PREFER_AES=${LTPA_PREFER_AES:-false}
+      # Whitelabel / Branding Configuration
+      - APP_NAME=${APP_NAME:-Collabora Docs}
+      - APP_NAME_SHORT=${APP_NAME_SHORT:-Docs}
+      - APP_TAGLINE=${APP_TAGLINE:-Your Documents, Anywhere}
+      - COMPANY_NAME=${COMPANY_NAME:-Your Company}
+      - COPYRIGHT=${COPYRIGHT:-}
+      - SUPPORT_EMAIL=${SUPPORT_EMAIL:-}
+      - LOGO_PRIMARY=${LOGO_PRIMARY:-}
+      - LOGO_ICON=${LOGO_ICON:-}
+      - LOGO_LOGIN=${LOGO_LOGIN:-}
+      - LOGIN_BACKGROUND=${LOGIN_BACKGROUND:-}
+      - PRIMARY_COLOR=${PRIMARY_COLOR:-}
+      - UI_BORDER_RADIUS=${UI_BORDER_RADIUS:-medium}
+      - UI_DARK_MODE=${UI_DARK_MODE:-disabled}
+      - ENABLE_REGISTRATION=${ENABLE_REGISTRATION:-true}
     volumes:
       - document-storage:/storage
       - wopi-logs:/app/logs

@@ -1,11 +1,31 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import whitelabelConfig, { generateCSSVariables, getFontFamily } from '../config/whitelabel.config';
+import api from '../services/api';
 
 const WhitelabelContext = createContext(null);
 
 export function WhitelabelProvider({ children, customConfig = {} }) {
   // Merge custom config with default config
   const [config, setConfig] = useState(() => deepMerge(whitelabelConfig, customConfig));
+  const [loading, setLoading] = useState(true);
+
+  // Fetch runtime config from backend on mount
+  useEffect(() => {
+    async function fetchRuntimeConfig() {
+      try {
+        const response = await api.get('/config/whitelabel');
+        if (response.data) {
+          setConfig((prev) => deepMerge(prev, response.data));
+        }
+      } catch (error) {
+        // If backend config fails, continue with static config
+        console.warn('Failed to fetch runtime whitelabel config, using defaults:', error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchRuntimeConfig();
+  }, []);
 
   // Apply CSS variables on mount and when config changes
   useEffect(() => {
@@ -26,6 +46,7 @@ export function WhitelabelProvider({ children, customConfig = {} }) {
     config,
     updateConfig,
     resetConfig,
+    loading,
     // Convenience getters
     branding: config.branding,
     logos: config.logos,

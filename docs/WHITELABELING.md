@@ -4,7 +4,8 @@ This guide explains how to customize the Collabora Online application to match y
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
+- [Quick Start (Environment Variables)](#quick-start-environment-variables)
+- [Quick Start (Config File)](#quick-start-config-file)
 - [Configuration File](#configuration-file)
 - [Branding Elements](#branding-elements)
 - [Color Customization](#color-customization)
@@ -16,7 +17,60 @@ This guide explains how to customize the Collabora Online application to match y
 
 ---
 
-## Quick Start
+## Quick Start (Environment Variables)
+
+**Recommended method** - No rebuild required, just edit `.env` and restart:
+
+1. **Edit your `.env` file:**
+   ```bash
+   # Application branding
+   APP_NAME=Your App Name
+   APP_NAME_SHORT=App
+   APP_TAGLINE=Your tagline here
+   COMPANY_NAME=Your Company
+   
+   # Primary brand color (hex)
+   PRIMARY_COLOR=#3b82f6
+   
+   # Logo URLs (place files in web-frontend/public/branding/)
+   LOGO_PRIMARY=/branding/logo.svg
+   LOGO_ICON=/branding/icon.svg
+   
+   # UI settings
+   UI_BORDER_RADIUS=medium
+   ENABLE_REGISTRATION=true
+   ```
+
+2. **Restart containers:**
+   ```bash
+   docker compose restart wopi-server
+   ```
+
+3. **Refresh browser** (Ctrl+Shift+R)
+
+### Available Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APP_NAME` | Collabora Docs | Application name |
+| `APP_NAME_SHORT` | Docs | Short name for mobile |
+| `APP_TAGLINE` | Your Documents, Anywhere | Tagline on login page |
+| `COMPANY_NAME` | Your Company | Company name in footer |
+| `SUPPORT_EMAIL` | | Support email address |
+| `PRIMARY_COLOR` | #3b82f6 | Primary brand color (hex) |
+| `LOGO_PRIMARY` | | Main logo URL/path |
+| `LOGO_ICON` | | Square icon URL/path |
+| `LOGO_LOGIN` | | Login page logo |
+| `LOGIN_BACKGROUND` | | Login background image |
+| `UI_BORDER_RADIUS` | medium | none/small/medium/large/full |
+| `UI_DARK_MODE` | disabled | disabled/enabled/system |
+| `ENABLE_REGISTRATION` | true | Show registration link |
+
+---
+
+## Quick Start (Config File)
+
+For advanced customization, edit the config file (requires rebuild):
 
 1. **Edit the configuration file:**
    ```bash
